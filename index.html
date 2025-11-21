@@ -1,0 +1,188 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <title>Panel UCI · Google Sheets</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+
+    <link rel="stylesheet" href="assets/css/styles.css">
+
+    <!-- Google APIs -->
+    <script src="https://apis.google.com/js/api.js" onload="gapiLoaded()"></script>
+    <script src="https://accounts.google.com/gsi/client" async defer onload="gisLoaded()"></script>
+
+    <!-- Chart.js -->
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+
+    <script defer src="assets/js/app.js"></script>
+</head>
+<body>
+    <header class="topbar">
+        <div class="topbar-left">
+            <h1>Panel de Pacientes UCI</h1>
+            <p class="subtitle">Integración directa con Google Sheets · Hoja BASE_UCI</p>
+        </div>
+        <div class="topbar-right">
+            <button id="btnConnect" disabled>Conectar con Google</button>
+            <span id="authStatus" class="status-badge status-disconnected">Desconectado</span>
+        </div>
+    </header>
+
+    <main class="main-layout">
+        <section class="card auth-card">
+            <h2>Autenticación y fuente de datos</h2>
+            <p>
+                Este panel se conecta a una hoja de cálculo de Google Sheets utilizando OAuth 2.0 del lado del cliente.
+                Los datos se leen y se escriben directamente en la hoja <strong>BASE_UCI</strong> del libro configurado.
+            </p>
+            <ul class="info-list">
+                <li><strong>ID de hoja de cálculo</strong>: <code id="sheetIdLabel"></code></li>
+                <li><strong>Nombre de hoja</strong>: <code id="sheetNameLabel"></code></li>
+                <li><strong>Alcance</strong>: <code>https://www.googleapis.com/auth/spreadsheets</code></li>
+            </ul>
+        </section>
+
+        <section class="kpi-grid">
+            <article class="card kpi-card">
+                <h3>Total de pacientes</h3>
+                <p id="kpiTotalPacientes" class="kpi-value">–</p>
+                <p class="kpi-caption">Registros con fecha de ingreso válida</p>
+            </article>
+            <article class="card kpi-card">
+                <h3>Edad media</h3>
+                <p id="kpiEdadMedia" class="kpi-value">–</p>
+                <p class="kpi-caption">En años</p>
+            </article>
+            <article class="card kpi-card">
+                <h3>Proporción de mujeres</h3>
+                <p id="kpiFem" class="kpi-value">–</p>
+                <p class="kpi-caption">Sobre casos con sexo informado</p>
+            </article>
+            <article class="card kpi-card">
+                <h3>Tasa de mortalidad</h3>
+                <p id="kpiMort" class="kpi-value">–</p>
+                <p class="kpi-caption">Óbitos sobre egresos con condición informada</p>
+            </article>
+        </section>
+
+        <section class="card filters-card">
+            <h2>Filtros analíticos</h2>
+            <div class="filters-grid">
+                <div class="form-group">
+                    <label for="fDesde">Ingreso desde</label>
+                    <input type="date" id="fDesde">
+                </div>
+                <div class="form-group">
+                    <label for="fHasta">Ingreso hasta</label>
+                    <input type="date" id="fHasta">
+                </div>
+                <div class="form-group">
+                    <label for="fSexo">Sexo</label>
+                    <select id="fSexo">
+                        <option value="">Todos</option>
+                        <option value="F">Femenino</option>
+                        <option value="M">Masculino</option>
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label for="fCond">Condición al egreso</label>
+                    <select id="fCond">
+                        <option value="">Todas</option>
+                        <option value="vivo">Vivo/Egreso vivo</option>
+                        <option value="obito">Óbito/Fallecido</option>
+                    </select>
+                </div>
+                <div class="filters-actions">
+                    <button id="btnAplicarFiltros">Aplicar filtros</button>
+                    <button id="btnLimpiarFiltros" class="secondary">Limpiar</button>
+                </div>
+            </div>
+        </section>
+
+        <section class="charts-layout">
+            <article class="card chart-card">
+                <h2>Ingresos mensuales</h2>
+                <canvas id="chartIngresos"></canvas>
+            </article>
+            <article class="card chart-card">
+                <h2>Distribución de edades</h2>
+                <canvas id="chartEdades"></canvas>
+            </article>
+        </section>
+
+        <section class="card table-card">
+            <div class="table-header">
+                <h2>Tabla de registros</h2>
+                <div class="table-actions">
+                    <input type="text" id="searchBox" placeholder="Buscar por nombre, diagnóstico, etc.">
+                    <span id="tableSummary" class="table-summary">0 registros</span>
+                </div>
+            </div>
+            <div class="table-wrapper">
+                <table id="dataTable">
+                    <thead>
+                        <tr id="tableHeadRow"></tr>
+                    </thead>
+                    <tbody id="tableBody"></tbody>
+                </table>
+            </div>
+        </section>
+
+        <section class="card form-card">
+            <h2>Registrar nuevo paciente</h2>
+            <p class="form-caption">
+                Este formulario añade una nueva fila al final de la hoja <strong>BASE_UCI</strong>, mapeando los campos
+                a las columnas existentes. Los campos no definidos se completan en blanco.
+            </p>
+            <form id="recordForm">
+                <div class="form-grid">
+                    <div class="form-group">
+                        <label for="nombre">Nombre y apellido</label>
+                        <input type="text" id="nombre" required>
+                    </div>
+                    <div class="form-group">
+                        <label for="fechaIng">Fecha de ingreso</label>
+                        <input type="date" id="fechaIng" required>
+                    </div>
+                    <div class="form-group">
+                        <label for="fechaEgr">Fecha de egreso</label>
+                        <input type="date" id="fechaEgr">
+                    </div>
+                    <div class="form-group">
+                        <label for="edad">Edad</label>
+                        <input type="number" id="edad" min="0" max="120">
+                    </div>
+                    <div class="form-group">
+                        <label for="sexoForm">Sexo</label>
+                        <select id="sexoForm">
+                            <option value="">No especificado</option>
+                            <option value="F">Femenino</option>
+                            <option value="M">Masculino</option>
+                        </select>
+                    </div>
+                    <div class="form-group">
+                        <label for="condicion">Condición al egreso</label>
+                        <select id="condicion">
+                            <option value="">No especificado</option>
+                            <option value="VIVO">Vivo</option>
+                            <option value="OBITO">Óbito</option>
+                        </select>
+                    </div>
+                    <div class="form-group full-width">
+                        <label for="diagnostico">Diagnóstico principal / Notas</label>
+                        <textarea id="diagnostico" rows="2"></textarea>
+                    </div>
+                </div>
+                <div class="form-actions">
+                    <button type="submit" id="btnGuardarRegistro">Guardar en Google Sheets</button>
+                    <span id="formStatus" class="form-status"></span>
+                </div>
+            </form>
+        </section>
+    </main>
+
+    <footer class="footer">
+        <p>Panel UCI · Integración con Google Sheets · Ejemplo para despliegue en GitHub Pages.</p>
+    </footer>
+</body>
+</html>
